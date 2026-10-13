@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-ifc viewer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  background:#0f1117; color:#e0e0e0;
+  overflow:hidden; height:100vh; width:100vw;
+}
+
+/* ── Header ──────────────────────────────────────── */
+#header {
+  position:fixed; top:0; left:0; right:0; height:52px;
+  background:#1a1d25; border-bottom:1px solid #2a2d35;
+  display:flex; align-items:center; padding:0 16px;
+  z-index:100; gap:10px;
+}
+#header h1 { font-size:15px; font-weight:600; color:#fff; white-space:nowrap; }
+.sep { width:1px; height:24px; background:#3a3d45; flex-shrink:0; }
+
+/* ── Toolbar buttons ─────────────────────────────── */
+#toolbar { display:none; align-items:center; gap:5px; flex-wrap:wrap; }
+#toolbar.active { display:flex; }
+.tool-btn {
+  padding:5px 12px; background:#22252e; border:1px solid #2a2d35;
+  border-radius:5px; color:#9ca3af; font-size:12px; cursor:pointer;
+  transition:all .15s; white-space:nowrap;
+}
+.tool-btn:hover { background:#2a2d38; color:#e0e0e0; border-color:#3a3d45; }
+.tool-btn.active-btn { background:#3b82f6; color:#fff; border-color:#3b82f6; }
+
+/* ── Search ──────────────────────────────────────── */
+#search-wrap { position:relative; }
+#search-input {
+  width:210px; padding:5px 10px; background:#14161e; border:1px solid #2a2d35;
+  border-radius:5px; color:#e0e0e0; font-size:12px; outline:none;
+}
+#search-input:focus { border-color:#3b82f6; }
+#search-input::placeholder { color:#5b6270; }
+#search-input:disabled { opacity:.4; cursor:not-allowed; }
+#search-results {
+  position:absolute; top:calc(100% + 6px); left:0; width:280px;
+  max-height:320px; overflow-y:auto; background:#1a1d25; border:1px solid #2a2d35;
+  border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.45); z-index:150; display:none;
+}
+#search-results.active { display:block; }
+.search-result { padding:8px 12px; cursor:pointer; border-bottom:1px solid #22252e; }
+.search-result:last-child { border-bottom:none; }
+.search-result:hover { background:#22252e; }
+.search-result .sr-name { font-size:12px; color:#e0e0e0; font-weight:500; }
+.search-result .sr-meta { font-size:10px; color:#6b7280; margin-top:2px; }
+.search-empty { padding:10px 12px; font-size:11px; color:#4b5563; }
+
+/* ── Upload zone ─────────────────────────────────── */
+#upload-zone {
+  position:fixed; top:52px; left:0; right:0; bottom:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:50; background:#0f1117;
+}
+#upload-zone.hidden { display:none; }
+#drop-area {
+  width:520px; max-width:90vw; padding:50px 40px;
+  border:2px dashed #3a3d55; border-radius:16px;
+  text-align:center; cursor:pointer; transition:all .2s; background:#14161e;
+}
+#drop-area:hover, #drop-area.dragover {
+  border-color:#4a8cff; background:#181c28;
+  box-shadow:0 0 40px rgba(74,140,255,.08);
+}
+#drop-area svg { width:56px; height:56px; margin-bottom:16px; fill:#4a5568; }
+#drop-area h2 { font-size:18px; font-weight:600; color:#c0c4cc; margin-bottom:6px; }
+#drop-area p  { font-size:13px; color:#6b7280; margin-bottom:18px; }
+#drop-area .browse-btn {
+  display:inline-block; padding:9px 26px; background:#3b82f6; color:#fff;
+  border:none; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;
+}
+#drop-area .browse-btn:hover { background:#2563eb; }
+#file-input { display:none; }
+
+/* ── 3D Viewer ───────────────────────────────────── */
+#viewer-container { position:fixed; top:52px; left:0; right:0; bottom:0; display:none; }
+#viewer-container.active { display:block; }
+#three-canvas { width:100%; height:100%; display:block; }
+
+/* ── Loading ─────────────────────────────────────── */
+#loading-overlay {
+  position:fixed; top:52px; left:0; right:0; bottom:0;
+  background:rgba(15,17,23,.93); display:none;
+  flex-direction:column; align-items:center; justify-content:center; z-index:90;
+}
+#loading-overlay.active { display:flex; }
+.spinner {
+  width:44px; height:44px; border:4px solid #2a2d35;
+  border-top:4px solid #3b82f6; border-radius:50%;
+  animation:spin .8s linear infinite; margin-bottom:18px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+#loading-text { font-size:14px; color:#9ca3af; }
+#loading-progress {
+  width:280px; max-width:80vw; height:4px; background:#2a2d35;
+  border-radius:2px; margin-top:14px; overflow:hidden;
+}
+#loading-bar { height:100%; background:#3b82f6; border-radius:2px; width:0%; transition:width .3s; }
+
+/* ── Info panel ──────────────────────────────────── */
+#info-panel {
+  position:fixed; bottom:16px; left:16px;
+  background:rgba(26,29,37,.92); border:1px solid #2a2d35;
+  border-radius:10px; padding:14px 18px; font-size:12px;
+  line-height:1.7; z-index:80; display:none; backdrop-filter:blur(12px);
+  min-width:220px;
+}
+#info-panel.active { display:block; }
+#info-panel .title { font-weight:600; font-size:13px; color:#fff; margin-bottom:6px; }
+#info-panel .row { display:flex; justify-content:space-between; gap:16px; }
+#info-panel .label { color:#6b7280; }
+#info-panel .value { color:#d1d5db; font-weight:500; }
+
+/* ── Controls hint ───────────────────────────────── */
+#controls-hint {
+  position:fixed; bottom:16px; right:16px;
+  background:rgba(26,29,37,.85); border:1px solid #2a2d35;
+  border-radius:10px; padding:10px 14px; font-size:11px;
+  color:#6b7280; z-index:80; display:none;
+  backdrop-filter:blur(12px); line-height:1.9;
+}
+#controls-hint.active { display:block; }
+#controls-hint kbd {
+  background:#2a2d35; padding:1px 5px; border-radius:3px;
+  font-size:10px; color:#9ca3af;
+}
+
+/* Click inspect tooltip */
+#inspect-tooltip {
+  position:fixed; background:rgba(20,22,30,.97);
+  border:1px solid #3b82f6; border-radius:8px;
+  padding:12px 14px; font-size:12px; color:#e0e0e0;
+  z-index:200; pointer-events:auto; display:none;
+  backdrop-filter:blur(8px); line-height:1.8; max-width:300px;
+  max-height:70vh; overflow-y:auto; overflow-x:hidden;
+  box-shadow:0 4px 24px rgba(0,0,0,.4);
+}
+#inspect-tooltip .tt-room { font-weight:700; color:#fff; font-size:13px; margin-bottom:4px; }
+#inspect-tooltip .tt-row { display:flex; justify-content:space-between; gap:12px; }
+#inspect-tooltip .tt-key { color:#6b7280; }
+#inspect-tooltip .tt-val { font-weight:600; text-align:right; word-break:break-word; }
+#inspect-tooltip .tt-pset-title {
+  margin-top:8px; margin-bottom:2px; font-weight:700; font-size:10px;
+  text-transform:uppercase; letter-spacing:.05em; color:#4a8cff;
+  border-top:1px solid #2a2d35; padding-top:6px;
+}
+
+/* Hover tooltip */
+#hover-tooltip {
+  position:fixed; background:rgba(26,29,37,.95); border:1px solid #3b82f6;
+  border-radius:6px; padding:7px 12px; font-size:11px; color:#e0e0e0;
+  z-index:200; pointer-events:none; display:none; backdrop-filter:blur(8px); line-height:1.6;
+}
+#hover-tooltip .tt-room { font-weight:600; color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <h1>🧩 Web-ifc viewer &nbsp;<span id="mode-badge" style="font-size:11px;color:#93c5fd;background:#1e3a5f;padding:2px 8px;border-radius:4px;font-weight:500">🏠 Spaces mode</span></h1>
+  <div class="sep"></div>
+  <div id="toolbar">
+    <button class="tool-btn active-btn" id="btn-mode-spaces" data-mode="spaces">🏠 Spaces</button>
+    <button class="tool-btn" id="btn-mode-elements" data-mode="elements">🧱 Elements</button>
+    <div class="sep"></div>
+    <div id="search-wrap">
+      <input type="text" id="search-input" placeholder="🔍 Search e.g. B1001 or US5" autocomplete="off" disabled>
+      <div id="search-results"></div>
+    </div>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-wireframe">Wireframe</button>
+    <button class="tool-btn" id="btn-edges">Edges</button>
+    <button class="tool-btn" id="btn-transparent">X-Ray</button>
+    <button class="tool-btn" id="btn-fit">Fit View</button>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-new-file">New IFC</button>
+  </div>
+</div>
+
+<!-- Upload zone -->
+<div id="upload-zone">
+  <div id="drop-area">
+    <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+    <h2>Upload IFC Model</h2>
+    <p>Drag & drop your .ifc file here, or click to browse</p>
+    <button class="browse-btn" id="btn-browse">Choose IFC File</button>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".ifc">
+
+<!-- 3D Viewer -->
+<div id="viewer-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<!-- Loading -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div id="loading-text">Loading...</div>
+  <div id="loading-progress"><div id="loading-bar"></div></div>
+</div>
+
+<!-- Info panel (bottom-left) -->
+<div id="info-panel">
+  <div class="title" id="info-title">📐 Model Info</div>
+  <div class="row"><span class="label">File</span><span class="value" id="info-filename">—</span></div>
+  <div class="row"><span class="label">Size</span><span class="value" id="info-filesize">—</span></div>
+  <div class="row"><span class="label">Meshes</span><span class="value" id="info-meshes">—</span></div>
+  <div class="row"><span class="label">Triangles</span><span class="value" id="info-triangles">—</span></div>
+  <div class="row"><span class="label">Load time</span><span class="value" id="info-time">—</span></div>
+</div>
+
+<!-- Controls hint (bottom-right) -->
+<div id="controls-hint">
+  <kbd>Left drag</kbd> Rotate &nbsp;
+  <kbd>Right drag</kbd> Pan<br>
+  <kbd>Scroll</kbd> Zoom &nbsp;
+  <kbd>F</kbd> Fit view<br>
+  <kbd>W</kbd> Wireframe &nbsp;
+  <kbd>E</kbd> Edges &nbsp;
+  <kbd>X</kbd> X-Ray<br>
+  <kbd>1</kbd> Spaces mode &nbsp;
+  <kbd>2</kbd> Elements mode
+</div>
+
+<!-- Hover tooltip -->
+<div id="hover-tooltip"></div>
+
+<!-- Click inspect tooltip -->
+<div id="inspect-tooltip"></div>
+
+<!-- Three.js + OrbitControls -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════════════════════════
+// THREE.JS SCENE SETUP
+// ═══════════════════════════════════════════════════════════════════
+
+const canvas         = document.getElementById('three-canvas');
+const viewerContainer= document.getElementById('viewer-container');
+
+const scene    = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1117);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10000);
+camera.position.set(30,30,30);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.sortObjects = true; // ensures transparent objects render after opaque ones
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.screenSpacePanning = true;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dir1 = new THREE.DirectionalLight(0xffffff, 1.1);
+dir1.position.set(50,80,50); dir1.castShadow = true; scene.add(dir1);
+const dir2 = new THREE.DirectionalLight(0xccddff, 0.35);
+dir2.position.set(-30,40,-20); scene.add(dir2);
+scene.add(new THREE.HemisphereLight(0xddeeff,0x0d0d0d,0.25));
+
+const grid = new THREE.GridHelper(200,100,0x2a2d35,0x1e2028);
+grid.material.opacity = 0.5; grid.material.transparent = true; scene.add(grid);
+const axes = new THREE.AxesHelper(5); scene.add(axes);
+
+const modelGroup = new THREE.Group(); modelGroup.name='IFC'; scene.add(modelGroup);
+const edgesGroup = new THREE.Group(); edgesGroup.name='Edges'; edgesGroup.visible=false; scene.add(edgesGroup);
+
+function resizeRenderer() {
+  const w = viewerContainer.clientWidth || window.innerWidth;
+  const h = viewerContainer.clientHeight || (window.innerHeight - 52);
+  renderer.setSize(w, h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', resizeRenderer);
+resizeRenderer();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+
+let ifcModelLoaded  = false;
+let meshCount       = 0;
+let triangleCount   = 0;
+
+// View mode: 'spaces' shows only IfcSpace zone volumes (opaque) with
+// structural elements faded for context; 'elements' shows every
+// building element at full opacity and hides IfcSpace volumes
+// completely (100% transparent) so elements are directly clickable.
+let viewMode = 'spaces';
+
+// Live web-ifc handles for the currently loaded model — kept open
+// (not closed after parsing) so properties can be queried on demand
+// when the user clicks something.
+let currentIfcAPI   = null;
+let currentModelID  = null;
+
+// Maps: expressID → globalId  (spaces)
+let spaceMap        = {};
+// Maps: globalId → expressID  (reverse lookup, spaces)
+let spaceEidByGid   = {};
+// Maps: expressID → globalId  (walls/elements matched to their enclosing space)
+let elementToSpaceMap = {};
+// Maps: globalId → bounding box  (used for spatial matching only)
+let spaceBounds     = {};
+// Cache of quick name/type lookups per expressID, for hover + search
+let elementInfoCache = {};
+// Flat list of every element in the model, for the search box
+let searchIndex     = [];
+// Pending "un-highlight" timer for the search-result highlight flash
+let highlightTimer  = null;
+
+let wireframeMode  = false;
+let edgesMode      = false;
+let xrayMode       = false;
+
+const SPACE_COLOR      = new THREE.Color(0.55, 0.62, 0.74);
+const SPACE_OPACITY    = 0.78;  // Spaces mode: zones — clear, solid-reading fill
+const ELEMENT_OPACITY  = 0.08;  // Spaces mode: structural elements — faint context only
+const HIGHLIGHT_COLOR  = new THREE.Color(1.0, 0.82, 0.2);
+
+
+// ═══════════════════════════════════════════════════════════════════
+// WEB-IFC SETUP
+// ═══════════════════════════════════════════════════════════════════
+
+const WEB_IFC_VERSION = '0.0.74';
+const WEB_IFC_CDN = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VERSION}/`;
+let WebIFC;
+
+async function loadWebIFC() {
+  const m = await import(`https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VERSION}/web-ifc-api.js`);
+  WebIFC = m; return WebIFC;
+}
+
+// Reverse-lookup table built from every numeric IFC* constant the
+// web-ifc module exports, so a line's numeric `type` code can be
+// turned back into a readable class name (e.g. "IFCWALL") without
+// depending on any specific helper method existing in this build.
+let typeCodeToName = null;
+function getTypeName(code) {
+  if (!typeCodeToName) {
+    typeCodeToName = {};
+    for (const k in WebIFC) {
+      if (/^IFC[A-Z0-9]+$/.test(k) && typeof WebIFC[k] === 'number') {
+        typeCodeToName[WebIFC[k]] = k;
+      }
+    }
+  }
+  return typeCodeToName[code] || ('Type #' + code);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DOM REFS
+// ═══════════════════════════════════════════════════════════════════
+
+const uploadZone    = document.getElementById('upload-zone');
+const dropArea      = document.getElementById('drop-area');
+const fileInput     = document.getElementById('file-input');
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText   = document.getElementById('loading-text');
+const loadingBar    = document.getElementById('loading-bar');
+const infoPanel     = document.getElementById('info-panel');
+const controlsHint  = document.getElementById('controls-hint');
+const toolbar       = document.getElementById('toolbar');
+const hoverTip      = document.getElementById('hover-tooltip');
+const inspectTip    = document.getElementById('inspect-tooltip');
+const modeBadge     = document.getElementById('mode-badge');
+const btnModeSpaces = document.getElementById('btn-mode-spaces');
+const btnModeElements = document.getElementById('btn-mode-elements');
+const searchInput   = document.getElementById('search-input');
+const searchResultsEl = document.getElementById('search-results');
+
+// ═══════════════════════════════════════════════════════════════════
+// FILE HANDLING – IFC
+// ═══════════════════════════════════════════════════════════════════
+
+document.getElementById('btn-browse').addEventListener('click', e => {
+  e.stopPropagation(); fileInput.click();
+});
+dropArea.addEventListener('click', e => {
+  if (e.target.id === 'btn-browse') return; fileInput.click();
+});
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('dragover'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+dropArea.addEventListener('drop', e => {
+  e.preventDefault(); dropArea.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith('.ifc')) handleIFCFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleIFCFile(fileInput.files[0]);
+});
+
+function closeCurrentModel() {
+  if (currentIfcAPI && currentModelID !== null) {
+    try { currentIfcAPI.CloseModel(currentModelID); } catch(e) {}
+  }
+  currentIfcAPI = null;
+  currentModelID = null;
+}
+
+document.getElementById('btn-new-file').addEventListener('click', () => {
+  clearModel();
+  closeCurrentModel();
+  uploadZone.classList.remove('hidden');
+  viewerContainer.classList.remove('active');
+  infoPanel.classList.remove('active');
+  controlsHint.classList.remove('active');
+  toolbar.classList.remove('active');
+  ifcModelLoaded = false;
+  spaceMap = {}; spaceEidByGid = {}; elementToSpaceMap = {}; spaceBounds = {}; elementInfoCache = {};
+  searchIndex = []; searchInput.value = ''; searchInput.disabled = true;
+  searchResultsEl.classList.remove('active');
+  if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
+  fileInput.value = '';
+  setViewMode('spaces');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// LOAD IFC
+// ═══════════════════════════════════════════════════════════════════
+
+async function handleIFCFile(file) {
+  const t0 = performance.now();
+  uploadZone.classList.add('hidden');
+  viewerContainer.classList.add('active');
+  loadingOverlay.classList.add('active');
+  setProgress(5, 'Initializing web-ifc engine...');
+
+  closeCurrentModel();
+
+  try {
+    if (!WebIFC) await loadWebIFC();
+    setProgress(10, 'Initialising WASM...');
+
+    const ifcAPI = new WebIFC.IfcAPI();
+    ifcAPI.SetWasmPath(WEB_IFC_CDN, true);
+    await ifcAPI.Init();
+
+    setProgress(20, 'Reading IFC file...');
+    const buf = await file.arrayBuffer();
+    const data = new Uint8Array(buf);
+
+    setProgress(30, 'Parsing IFC...');
+    const modelID = ifcAPI.OpenModel(data, { COORDINATE_TO_ORIGIN: true });
+    currentIfcAPI = ifcAPI;
+    currentModelID = modelID;
+
+    // ── Extract IfcSpace GlobalIds ──────────────────────────────
+    setProgress(35, 'Extracting IfcSpace data...');
+    spaceMap = {}; spaceEidByGid = {}; elementInfoCache = {};
+    const IFCSPACE = 3856911033;
+    try {
+      const ids = ifcAPI.GetLineIDsWithType(modelID, IFCSPACE);
+      const n = typeof ids.size==='function' ? ids.size() : ids.length;
+      for (let i=0;i<n;i++) {
+        const eid = typeof ids.get==='function' ? ids.get(i) : ids[i];
+        try {
+          const p = ifcAPI.GetLine(modelID, eid);
+          const gid = p.GlobalId?.value ?? p.GlobalId;
+          if (gid) { spaceMap[eid] = gid; spaceEidByGid[gid] = eid; }
+        } catch(e){}
+      }
+    } catch(e){}
+
+    // ── Extract IfcRelSpaceBoundary ─────────────────────────────
+    elementToSpaceMap = {};
+    const IFCRELSPACEBOUNDARY = 3451746338;
+    try {
+      const rids = ifcAPI.GetLineIDsWithType(modelID, IFCRELSPACEBOUNDARY);
+      const rn = typeof rids.size==='function' ? rids.size() : (rids.length||0);
+      for (let i=0;i<rn;i++) {
+        const rid = typeof rids.get==='function' ? rids.get(i) : rids[i];
+        try {
+          const rel = ifcAPI.GetLine(modelID, rid);
+          let se = rel.RelatingSpace?.value ?? rel.RelatingSpace;
+          if (typeof se==='object'&&se) se=se.value??se.expressID;
+          let ee = rel.RelatedBuildingElement?.value ?? rel.RelatedBuildingElement;
+          if (typeof ee==='object'&&ee) ee=ee.value??ee.expressID;
+          if (se&&ee&&spaceMap[se]) elementToSpaceMap[ee]=spaceMap[se];
+        } catch(e){}
+      }
+    } catch(e){}
+
+    // ── Stream meshes ───────────────────────────────────────────
+    setProgress(40, 'Building 3D geometry...');
+    clearModel(); meshCount=0; triangleCount=0;
+    let processed=0;
+
+    ifcAPI.StreamAllMeshes(modelID, (flatMesh, idx, total) => {
+      const geoms = flatMesh.geometries;
+      const n = geoms.size();
+      for (let i=0;i<n;i++) {
+        const pg = geoms.get(i);
+        const ifcGeo = ifcAPI.GetGeometry(modelID, pg.geometryExpressID);
+        let verts, indices;
+        if (typeof ifcAPI.GetVertexArray==='function') {
+          verts   = ifcAPI.GetVertexArray(ifcGeo.GetVertexData(), ifcGeo.GetVertexDataSize());
+          indices = ifcAPI.GetIndexArray(ifcGeo.GetIndexData(), ifcGeo.GetIndexDataSize());
+        } else {
+          const wm=ifcAPI.wasmModule;
+          verts  =wm.HEAPF32.slice(ifcGeo.GetVertexData()/4, ifcGeo.GetVertexData()/4+ifcGeo.GetVertexDataSize());
+          indices=wm.HEAPU32.slice(ifcGeo.GetIndexData()/4,  ifcGeo.GetIndexData()/4+ifcGeo.GetIndexDataSize());
+        }
+        if (!verts.length||!indices.length){ try{ifcGeo.delete();}catch(e){} continue; }
+
+        const geo = new THREE.BufferGeometry();
+        const vc = verts.length/6;
+        const pos = new Float32Array(vc*3);
+        const nor = new Float32Array(vc*3);
+        for (let j=0;j<vc;j++) {
+          pos[j*3]=verts[j*6]; pos[j*3+1]=verts[j*6+1]; pos[j*3+2]=verts[j*6+2];
+          nor[j*3]=verts[j*6+3]; nor[j*3+1]=verts[j*6+4]; nor[j*3+2]=verts[j*6+5];
+        }
+        geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+        geo.setAttribute('normal',  new THREE.BufferAttribute(nor,3));
+        geo.setIndex(new THREE.BufferAttribute(indices,1));
+
+        const c = pg.color;
+        const mat = new THREE.MeshPhongMaterial({
+          color:new THREE.Color(c.x,c.y,c.z), opacity:c.w,
+          transparent:c.w<1, side:THREE.DoubleSide, depthWrite:c.w>=1,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        const m4 = new THREE.Matrix4(); m4.fromArray(pg.flatTransformation);
+        mesh.applyMatrix4(m4);
+        mesh.userData.expressID = flatMesh.expressID;
+        mesh.userData.origColor = new THREE.Color(c.x,c.y,c.z);
+        mesh.userData.origOpacity = c.w;
+        modelGroup.add(mesh);
+
+        if (indices.length>6) {
+          const eg = new THREE.EdgesGeometry(geo,30);
+          const em = new THREE.LineBasicMaterial({color:0x333333,opacity:0.35,transparent:true});
+          const el = new THREE.LineSegments(eg,em);
+          el.applyMatrix4(m4); edgesGroup.add(el);
+        }
+        meshCount++; triangleCount+=indices.length/3;
+        try{ifcGeo.delete();}catch(e){}
+      }
+      processed++;
+      if (total>0) setProgress(40+processed/total*45, `Building meshes… ${processed}/${total}`);
+    });
+
+    // ── Spatial bounding boxes + Fix 3+6: force-render IfcSpaces ───
+    // web-ifc's StreamAllMeshes skips IfcSpaces when the IFC layer has
+    // LayerOn=false (the default for Revit exports).  We call GetFlatMesh
+    // per space here, which bypasses the layer flag entirely.
+    setProgress(87, 'Computing space bounds...');
+    spaceBounds = {};
+    const _spaceGeoMat = new THREE.MeshBasicMaterial({
+      color: SPACE_COLOR, opacity: SPACE_OPACITY, transparent: true,
+      side: THREE.DoubleSide, depthWrite: false, depthTest: true,
+    });
+
+    for (const [eidStr, gid] of Object.entries(spaceMap)) {
+      const eid = Number(eidStr);
+      try {
+        const fm = ifcAPI.GetFlatMesh(modelID, eid);
+        const ng = fm.geometries.size();
+        let mnX=Infinity,mxX=-Infinity,mnZ=Infinity,mxZ=-Infinity;
+
+        // Is this space already in the scene from StreamAllMeshes?
+        const alreadyRendered = modelGroup.children.some(c => c.userData.expressID === eid);
+
+        for (let gi=0;gi<ng;gi++) {
+          const pg=fm.geometries.get(gi);
+          const sg=ifcAPI.GetGeometry(modelID,pg.geometryExpressID);
+          let sv; const m4=new THREE.Matrix4(); m4.fromArray(pg.flatTransformation);
+          if (typeof ifcAPI.GetVertexArray==='function')
+            sv=ifcAPI.GetVertexArray(sg.GetVertexData(),sg.GetVertexDataSize());
+          else { const w=ifcAPI.wasmModule; sv=w.HEAPF32.slice(sg.GetVertexData()/4,sg.GetVertexData()/4+sg.GetVertexDataSize()); }
+          if (!sv.length){ try{sg.delete();}catch(e){} continue; }
+
+          // Force-add mesh for spaces that StreamAllMeshes skipped (Fix 3+6)
+          if (!alreadyRendered) {
+            let idxArr = null;
+            try {
+              const ig = ifcAPI.GetGeometry(modelID, pg.geometryExpressID);
+              if (typeof ifcAPI.GetIndexArray==='function')
+                idxArr = ifcAPI.GetIndexArray(ig.GetIndexData(), ig.GetIndexDataSize());
+              else { const w=ifcAPI.wasmModule; idxArr=w.HEAPU32.slice(ig.GetIndexData()/4, ig.GetIndexData()/4+ig.GetIndexDataSize()); }
+              try{ig.delete();}catch(e){}
+            } catch(e){}
+            const vc2=sv.length/6;
+            const pos2=new Float32Array(vc2*3), nor2=new Float32Array(vc2*3);
+            for (let vi=0;vi<vc2;vi++) {
+              pos2[vi*3]=sv[vi*6]; pos2[vi*3+1]=sv[vi*6+1]; pos2[vi*3+2]=sv[vi*6+2];
+              nor2[vi*3]=sv[vi*6+3]; nor2[vi*3+1]=sv[vi*6+4]; nor2[vi*3+2]=sv[vi*6+5];
+            }
+            const geo2 = new THREE.BufferGeometry();
+            geo2.setAttribute('position', new THREE.BufferAttribute(pos2,3));
+            geo2.setAttribute('normal',   new THREE.BufferAttribute(nor2,3));
+            if (idxArr && idxArr.length) geo2.setIndex(new THREE.BufferAttribute(idxArr,1));
+            const mesh2 = new THREE.Mesh(geo2, _spaceGeoMat.clone());
+            mesh2.applyMatrix4(m4);
+            mesh2.userData.expressID  = eid;
+            mesh2.userData.origColor  = SPACE_COLOR.clone();
+            mesh2.userData.origOpacity= SPACE_OPACITY;
+            modelGroup.add(mesh2);
+            meshCount++;
+          }
+
+          // Accumulate bounding box regardless
+          const vc3=sv.length/6;
+          for (let vi=0;vi<vc3;vi++) {
+            const pt=new THREE.Vector3(sv[vi*6],sv[vi*6+1],sv[vi*6+2]); pt.applyMatrix4(m4);
+            mnX=Math.min(mnX,pt.x); mxX=Math.max(mxX,pt.x);
+            mnZ=Math.min(mnZ,pt.z); mxZ=Math.max(mxZ,pt.z);
+          }
+          try{sg.delete();}catch(e){}
+        }
+        if (mnX<Infinity) spaceBounds[gid]={minX:mnX,maxX:mxX,minZ:mnZ,maxZ:mxZ};
+        try{fm.delete();}catch(e){}
+      } catch(e){}
+    }
+
+    // ── Spatial matching: elements → rooms ─────────────────────
+    setProgress(93, 'Spatial matching...');
+    modelGroup.updateMatrixWorld(true);
+    modelGroup.traverse(child => {
+      if (!child.isMesh) return;
+      const eid = child.userData.expressID;
+      if (spaceMap[eid]||elementToSpaceMap[eid]) return;
+      child.geometry.computeBoundingBox();
+      const lb = child.geometry.boundingBox; if (!lb) return;
+      const wb = lb.clone().applyMatrix4(child.matrixWorld);
+      const cx=(wb.min.x+wb.max.x)/2, cz=(wb.min.z+wb.max.z)/2;
+      let bestGid=null, bestArea=Infinity;
+      for (const [gid,sb] of Object.entries(spaceBounds)) {
+        if (cx>=sb.minX-0.5&&cx<=sb.maxX+0.5&&cz>=sb.minZ-0.5&&cz<=sb.maxZ+0.5) {
+          const area=(sb.maxX-sb.minX)*(sb.maxZ-sb.minZ);
+          if (area<bestArea){bestArea=area;bestGid=gid;}
+        }
+      }
+      if (bestGid) elementToSpaceMap[eid]=bestGid;
+    });
+
+    // ── Search index: quick name/type lookup for every element ──
+    setProgress(97, 'Indexing element properties...');
+    buildSearchIndex();
+
+    // NOTE: the model is intentionally kept open (not CloseModel'd)
+    // so the property inspector and search can query live data later.
+    ifcModelLoaded = true;
+
+    applyModeAndColors();
+
+    fitCamera();
+    setProgress(100,'Done');
+
+    document.getElementById('info-filename').textContent = file.name;
+    document.getElementById('info-filesize').textContent = fmtBytes(file.size);
+    document.getElementById('info-meshes').textContent   = meshCount.toLocaleString();
+    document.getElementById('info-triangles').textContent = triangleCount.toLocaleString();
+    document.getElementById('info-time').textContent = ((performance.now()-t0)/1000).toFixed(1)+'s';
+
+    setTimeout(()=>{
+      loadingOverlay.classList.remove('active');
+      infoPanel.classList.add('active');
+      controlsHint.classList.add('active');
+      toolbar.classList.add('active');
+      searchInput.disabled = false;
+    },300);
+
+  } catch(err) {
+    console.error(err);
+    loadingText.textContent = 'Error: '+err.message;
+    setTimeout(()=>{
+      loadingOverlay.classList.remove('active');
+      uploadZone.classList.remove('hidden');
+      viewerContainer.classList.remove('active');
+    },2500);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MATERIAL / VISIBILITY APPLICATION
+// Spaces mode: IfcSpace volumes render as a clear, solid-reading fill;
+// structural elements stay visible but heavily faded, as context only.
+// Elements mode: every building element renders at full opacity/original
+// color; IfcSpace volumes are hidden completely (visible=false, i.e.
+// 100% transparent) so elements are directly clickable underneath them.
+// ═══════════════════════════════════════════════════════════════════
+
+function applyModeAndColors() {
+  if (!ifcModelLoaded) return;
+
+  modelGroup.traverse(child => {
+    if (!child.isMesh) return;
+    const eid     = child.userData.expressID;
+    const isSpace = !!spaceMap[eid];
+
+    // Snapshot original material once; never overwrite the snapshot
+    if (!child.userData._origMaterial)
+      child.userData._origMaterial = child.material;
+
+    // Dispose previous temporary material before replacing it
+    // to avoid GPU memory leaks when switching modes
+    if (child.material !== child.userData._origMaterial)
+      child.material.dispose();
+
+    if (viewMode === 'elements') {
+      // Spaces: fully transparent — hidden and excluded from raycasting
+      child.visible = !isSpace;
+      if (!isSpace) {
+        child.material = child.userData._origMaterial;
+        child.renderOrder = 0;
+      }
+      return;
+    }
+
+    // ── Spaces mode ──────────────────────────────────────────────
+    child.visible = true;
+
+    if (isSpace) {
+      child.material = new THREE.MeshBasicMaterial({
+        color:       SPACE_COLOR,
+        opacity:     SPACE_OPACITY,
+        transparent: true,
+        side:        THREE.DoubleSide,
+        depthWrite:  false,
+        depthTest:   true,
+      });
+      child.renderOrder = 1;
+    } else {
+      child.material = new THREE.MeshBasicMaterial({
+        color:       child.userData._origMaterial.color || new THREE.Color(0.4,0.4,0.4),
+        opacity:     ELEMENT_OPACITY,
+        transparent: true,
+        depthWrite:  false,
+        depthTest:   true,
+      });
+      child.renderOrder = 0;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VIEW MODE SWITCHING
+// ═══════════════════════════════════════════════════════════════════
+
+function setViewMode(mode) {
+  viewMode = mode;
+  btnModeSpaces.classList.toggle('active-btn', mode==='spaces');
+  btnModeElements.classList.toggle('active-btn', mode==='elements');
+
+  if (mode === 'spaces') {
+    modeBadge.textContent = '🏠 Spaces mode';
+    modeBadge.style.background = '#1e3a5f';
+    modeBadge.style.color = '#93c5fd';
+  } else {
+    modeBadge.textContent = '🧱 Elements mode';
+    modeBadge.style.background = '#3a2f1e';
+    modeBadge.style.color = '#fbbf7a';
+  }
+
+  hoverTip.style.display = 'none';
+  inspectTip.style.display = 'none';
+
+  if (ifcModelLoaded) applyModeAndColors();
+}
+
+btnModeSpaces.addEventListener('click', () => setViewMode('spaces'));
+btnModeElements.addEventListener('click', () => setViewMode('elements'));
+
+// ═══════════════════════════════════════════════════════════════════
+// PROPERTY INSPECTOR (both modes)
+// In Elements mode the clicked element is inspected directly.
+// In Spaces mode a click/hover on a space — or on an element known to
+// belong to a space — resolves to that space's own IFC properties.
+// ═══════════════════════════════════════════════════════════════════
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Resolves the expressID whose properties should be shown for a given
+// raycast hit, depending on the active view mode. Returns null if the
+// hit has no relevant target in the current mode.
+function resolveInspectTarget(eid) {
+  if (viewMode === 'elements') return eid;
+  const gid = spaceMap[eid] || elementToSpaceMap[eid];
+  if (!gid) return null;
+  return spaceEidByGid[gid] ?? eid;
+}
+
+function elementQuickInfo(eid) {
+  if (elementInfoCache[eid]) return elementInfoCache[eid];
+  let info = { name: '#'+eid, typeName: 'Unknown' };
+  try {
+    const line = currentIfcAPI.GetLine(currentModelID, eid);
+    const nm = line.Name?.value ?? line.Name;
+    info.name = nm ? String(nm) : ('#'+eid);
+    info.typeName = getTypeName(line.type);
+  } catch(e) {}
+  elementInfoCache[eid] = info;
+  return info;
+}
+
+async function getElementProperties(eid) {
+  const out = { attrs: {}, typeName: 'Unknown', psets: [] };
+
+  try {
+    const line = currentIfcAPI.GetLine(currentModelID, eid, true);
+    out.typeName = getTypeName(line.type);
+    for (const key of ['Name','GlobalId','Description','ObjectType','Tag','PredefinedType','LongName']) {
+      const v = line[key];
+      if (v === undefined || v === null) continue;
+      const val = (typeof v === 'object' && v !== null) ? (v.value ?? null) : v;
+      if (val !== null && val !== undefined && val !== '') out.attrs[key] = val;
+    }
+  } catch(e) {}
+
+  try {
+    if (currentIfcAPI.properties && typeof currentIfcAPI.properties.getPropertySets === 'function') {
+      const psets = await currentIfcAPI.properties.getPropertySets(currentModelID, eid, true);
+      for (const pset of (psets || [])) {
+        const psetName = pset.Name?.value || pset.Name || 'Property Set';
+        const props = [];
+        const items = pset.HasProperties || pset.Quantities || [];
+        for (const p of items) {
+          const pname = p.Name?.value ?? p.Name;
+          const pval = p.NominalValue?.value ?? p.LengthValue?.value ?? p.AreaValue?.value ??
+                       p.VolumeValue?.value ?? p.WeightValue?.value ?? p.CountValue?.value ?? null;
+          if (pname !== undefined && pname !== null && pval !== null) props.push({ name: pname, value: pval });
+        }
+        if (props.length) out.psets.push({ name: String(psetName), props });
+      }
+    }
+  } catch(e) { /* property sets unavailable in this web-ifc build */ }
+
+  return out;
+}
+
+async function showPropertyInspect(eid, clientX, clientY) {
+  inspectTip.innerHTML = `<div class="tt-room">Loading properties…</div>`;
+  inspectTip.style.left = Math.min(Math.max(clientX+20,0), window.innerWidth-320)+'px';
+  inspectTip.style.top  = Math.min(Math.max(clientY+20,60), window.innerHeight-40)+'px';
+  inspectTip.style.display='block';
+
+  const info = await getElementProperties(eid);
+  const icon = viewMode === 'spaces' ? '📍' : '🧱';
+  let html = `<div class="tt-room">${icon} ${escapeHtml(info.attrs.Name || info.typeName)}</div>`
+    + `<div style="color:#6b7280;font-size:10px;margin-bottom:6px">${escapeHtml(info.typeName)} · #${eid}</div>`;
+
+  for (const [k,v] of Object.entries(info.attrs)) {
+    if (k==='Name') continue;
+    html += `<div class="tt-row"><span class="tt-key">${escapeHtml(k)}</span><span class="tt-val">${escapeHtml(v)}</span></div>`;
+  }
+
+  if (info.psets.length) {
+    for (const pset of info.psets) {
+      html += `<div class="tt-pset-title">${escapeHtml(pset.name)}</div>`;
+      for (const p of pset.props) {
+        html += `<div class="tt-row"><span class="tt-key">${escapeHtml(p.name)}</span><span class="tt-val">${escapeHtml(p.value)}</span></div>`;
+      }
+    }
+  } else {
+    html += `<div style="color:#6b7280;font-size:10px;margin-top:6px">No property sets found</div>`;
+  }
+
+  inspectTip.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SEARCH
+// Typing a room name (e.g. "B1001") or an element name (e.g. "US5")
+// filters a live dropdown; picking a result switches to the matching
+// view mode, flies the camera to it, flashes a highlight, and opens
+// its property inspector.
+// ═══════════════════════════════════════════════════════════════════
+
+function buildSearchIndex() {
+  searchIndex = [];
+  const seen = new Set();
+  for (const child of modelGroup.children) {
+    if (!child.isMesh) continue;
+    const eid = child.userData.expressID;
+    if (seen.has(eid)) continue;
+    seen.add(eid);
+    const info = elementQuickInfo(eid);
+    searchIndex.push({ eid, name: info.name, typeName: info.typeName, isSpace: !!spaceMap[eid] });
+  }
+}
+
+function runSearch(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return searchIndex.filter(it =>
+    it.name.toLowerCase().includes(q) ||
+    it.typeName.toLowerCase().includes(q) ||
+    String(it.eid) === q
+  ).slice(0, 25);
+}
+
+function renderSearchResults(results) {
+  if (!results.length) {
+    searchResultsEl.innerHTML = `<div class="search-empty">No matches</div>`;
+    searchResultsEl.classList.add('active');
+    return;
+  }
+  searchResultsEl.innerHTML = results.map((r,i) =>
+    `<div class="search-result" data-idx="${i}">
+      <div class="sr-name">${escapeHtml(r.name)}</div>
+      <div class="sr-meta">${r.isSpace ? '🏠 Space' : '🧱 '+escapeHtml(r.typeName)} · #${r.eid}</div>
+    </div>`
+  ).join('');
+  searchResultsEl.classList.add('active');
+  searchResultsEl.querySelectorAll('.search-result').forEach(row => {
+    row.addEventListener('click', () => {
+      const idx = Number(row.dataset.idx);
+      selectSearchResult(results[idx]);
+    });
+  });
+}
+
+function fitCameraToEid(eid) {
+  const meshes = modelGroup.children.filter(c => c.isMesh && c.userData.expressID === eid);
+  if (!meshes.length) return;
+  const box = new THREE.Box3();
+  for (const m of meshes) box.expandByObject(m);
+  if (box.isEmpty()) return;
+  const ctr = box.getCenter(new THREE.Vector3());
+  const sz  = box.getSize(new THREE.Vector3());
+  const d   = Math.max(sz.x, sz.y, sz.z, 2) * 3;
+  camera.position.set(ctr.x+d*.6, ctr.y+d*.5, ctr.z+d*.6);
+  camera.near = Math.max(d*0.005, 0.01); camera.far = d*200;
+  camera.updateProjectionMatrix();
+  camera.lookAt(ctr); controls.target.copy(ctr); controls.update();
+}
+
+function highlightElement(eid) {
+  const meshes = modelGroup.children.filter(c => c.isMesh && c.userData.expressID === eid);
+  if (!meshes.length) return;
+  for (const m of meshes) {
+    if (m.material && m.material !== m.userData._origMaterial) m.material.dispose();
+    m.material = new THREE.MeshBasicMaterial({
+      color: HIGHLIGHT_COLOR, opacity: 1, transparent: false,
+      side: THREE.DoubleSide, depthWrite: true, depthTest: true,
+    });
+    m.visible = true;
+    m.renderOrder = 2;
+  }
+  if (highlightTimer) clearTimeout(highlightTimer);
+  highlightTimer = setTimeout(() => { applyModeAndColors(); highlightTimer = null; }, 2200);
+}
+
+function selectSearchResult(result) {
+  searchResultsEl.classList.remove('active');
+  searchInput.value = result.name;
+
+  const targetMode = result.isSpace ? 'spaces' : 'elements';
+  if (viewMode !== targetMode) setViewMode(targetMode);
+  else applyModeAndColors(); // clear any previous highlight before applying a new one
+
+  fitCameraToEid(result.eid);
+  highlightElement(result.eid);
+  showPropertyInspect(result.eid, window.innerWidth/2 - 150, 60);
+}
+
+let currentSearchResults = [];
+
+searchInput.addEventListener('input', () => {
+  if (!ifcModelLoaded) return;
+  currentSearchResults = runSearch(searchInput.value);
+  renderSearchResults(currentSearchResults);
+});
+searchInput.addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.key === 'Enter' && currentSearchResults.length) {
+    selectSearchResult(currentSearchResults[0]);
+  } else if (e.key === 'Escape') {
+    searchInput.blur();
+    searchResultsEl.classList.remove('active');
+  }
+});
+searchInput.addEventListener('focus', () => {
+  if (currentSearchResults.length) searchResultsEl.classList.add('active');
+});
+document.addEventListener('click', e => {
+  if (e.target !== searchInput && !searchResultsEl.contains(e.target)) {
+    searchResultsEl.classList.remove('active');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// TOOLBAR ACTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+document.getElementById('btn-wireframe').addEventListener('click', () => {
+  wireframeMode = !wireframeMode;
+  document.getElementById('btn-wireframe').classList.toggle('active-btn', wireframeMode);
+  modelGroup.traverse(c => { if (c.isMesh&&c.material) c.material.wireframe=wireframeMode; });
+});
+
+document.getElementById('btn-edges').addEventListener('click', () => {
+  edgesMode = !edgesMode;
+  document.getElementById('btn-edges').classList.toggle('active-btn', edgesMode);
+  edgesGroup.visible = edgesMode;
+});
+
+document.getElementById('btn-transparent').addEventListener('click', () => {
+  xrayMode = !xrayMode;
+  document.getElementById('btn-transparent').classList.toggle('active-btn', xrayMode);
+  modelGroup.traverse(c => {
+    if (!c.isMesh||!c.material) return;
+    if (xrayMode) {
+      c.material._xOp = c.material.opacity;
+      c.material._xTr = c.material.transparent;
+      c.material.opacity=0.12; c.material.transparent=true; c.material.depthWrite=false;
+    } else {
+      c.material.opacity = c.material._xOp ?? 1;
+      c.material.transparent = c.material._xTr ?? false;
+      c.material.depthWrite = !c.material.transparent;
+    }
+    c.material.needsUpdate=true;
+  });
+});
+
+document.getElementById('btn-fit').addEventListener('click', fitCamera);
+
+// ═══════════════════════════════════════════════════════════════════
+// HOVER TOOLTIP (mousemove on canvas)
+// ═══════════════════════════════════════════════════════════════════
+
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+
+function raycastVisible(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((clientX-rect.left)/rect.width)*2-1;
+  mouse.y = -((clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  return raycaster.intersectObjects(modelGroup.children, false).filter(h => h.object.visible);
+}
+
+canvas.addEventListener('mousemove', e => {
+  if (!ifcModelLoaded) { hoverTip.style.display='none'; return; }
+  const hits = raycastVisible(e.clientX, e.clientY);
+  if (!hits.length) { hoverTip.style.display='none'; return; }
+  const eid = hits[0].object.userData.expressID;
+  const targetEid = resolveInspectTarget(eid);
+  if (targetEid === null) { hoverTip.style.display='none'; return; }
+
+  const info = elementQuickInfo(targetEid);
+  hoverTip.innerHTML = `<div class="tt-room">${escapeHtml(info.name)}</div>`
+    + `<div style="color:#6b7280;font-size:10px">${escapeHtml(info.typeName)} · #${targetEid}</div>`;
+  hoverTip.style.left = (e.clientX+16)+'px';
+  hoverTip.style.top  = (e.clientY+16)+'px';
+  hoverTip.style.display = 'block';
+});
+canvas.addEventListener('mouseleave', () => { hoverTip.style.display='none'; });
+
+// ═══════════════════════════════════════════════════════════════════
+// CLICK INSPECT
+// ═══════════════════════════════════════════════════════════════════
+
+canvas.addEventListener('click', e => {
+  if (!ifcModelLoaded) return;
+  const hits = raycastVisible(e.clientX, e.clientY);
+  if (!hits.length) { inspectTip.style.display='none'; return; }
+  const eid = hits[0].object.userData.expressID;
+  const targetEid = resolveInspectTarget(eid);
+  if (targetEid === null) { inspectTip.style.display='none'; return; }
+
+  showPropertyInspect(targetEid, e.clientX, e.clientY);
+});
+
+// Close inspect on escape or right-click
+window.addEventListener('keydown', e => {
+  if (e.key==='Escape') { inspectTip.style.display='none'; hoverTip.style.display='none'; }
+});
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault(); inspectTip.style.display='none';
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════════════════════
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT') return;
+  switch(e.key.toLowerCase()) {
+    case 'w': document.getElementById('btn-wireframe').click(); break;
+    case 'e': document.getElementById('btn-edges').click(); break;
+    case 'x': document.getElementById('btn-transparent').click(); break;
+    case 'f': fitCamera(); break;
+    case '1': if (ifcModelLoaded) setViewMode('spaces'); break;
+    case '2': if (ifcModelLoaded) setViewMode('elements'); break;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════════
+
+function clearModel() {
+  while (modelGroup.children.length) {
+    const c=modelGroup.children[0];
+    c.geometry?.dispose();
+    if (Array.isArray(c.material)) c.material.forEach(m=>m.dispose());
+    else c.material?.dispose();
+    modelGroup.remove(c);
+  }
+  while (edgesGroup.children.length) {
+    const c=edgesGroup.children[0];
+    c.geometry?.dispose(); c.material?.dispose(); edgesGroup.remove(c);
+  }
+}
+
+function fitCamera() {
+  const box = new THREE.Box3().setFromObject(modelGroup);
+  if (box.isEmpty()) return;
+  const ctr = box.getCenter(new THREE.Vector3());
+  const sz  = box.getSize(new THREE.Vector3());
+  const d   = Math.max(sz.x,sz.y,sz.z)*1.5;
+  camera.position.set(ctr.x+d*.6, ctr.y+d*.5, ctr.z+d*.6);
+  camera.near = d*0.001; camera.far = d*100;
+  camera.updateProjectionMatrix();
+  camera.lookAt(ctr); controls.target.copy(ctr); controls.update();
+  grid.position.y = box.min.y-0.01;
+  const gs = d*3; grid.scale.set(gs/200,1,gs/200);
+}
+
+function setProgress(pct, msg) {
+  loadingBar.style.width = pct+'%';
+  loadingText.textContent = msg;
+}
+
+function fmtBytes(b) {
+  if (b<1024) return b+' B';
+  if (b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTO-LOAD BUNDLED SAMPLE MODEL
+// If a file with this name sits next to index.html (e.g. committed into
+// the GitHub repo / served via GitHub Pages), it loads automatically on
+// page open — no manual upload needed. A relative path is used so this
+// works both at a domain root and under a project-pages subpath
+// (username.github.io/repo/). If the file is missing (e.g. running this
+// viewer standalone), the fetch just fails silently and the normal
+// upload screen is shown instead.
+// ═══════════════════════════════════════════════════════════════════
+
+const AUTO_LOAD_IFC_PATH = 'model.ifc';
+
+(async () => {
+  console.log(`[auto-load] fetching "${AUTO_LOAD_IFC_PATH}"...`);
+  try {
+    const res = await fetch(AUTO_LOAD_IFC_PATH, { cache: 'no-store' });
+    if (!res.ok) {
+      console.warn(`[auto-load] "${AUTO_LOAD_IFC_PATH}" not found (HTTP ${res.status}) — showing upload screen.`);
+      return;
+    }
+    const blob = await res.blob();
+    console.log(`[auto-load] fetched ${blob.size.toLocaleString()} bytes, loading...`);
+    const file = new File([blob], AUTO_LOAD_IFC_PATH);
+    await handleIFCFile(file);
+  } catch (e) {
+    console.error('[auto-load] failed to auto-load bundled model:', e);
+  }
+})();
+</script>
+</body>
+</html>
